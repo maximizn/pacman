@@ -2,20 +2,30 @@
 <html lang="English">
 <head>
 	<title>Pacman Page</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Permanent+Marker">
 	<style type="text/css">
-		body {
+		html, body {
+			margin: 0;
+			padding: 0;
 			background-color: black;
-			width: 400px; /* adjusted to fit pacman */
-			margin: 0 auto;
 			font-family: sans-serif;
+			height: 100%;
+			overflow: hidden;
+		}
+
+		body {
+			display: flex;
+			justify-content: center;
+			align-items: flex-start;
 		}
 
 		#pacman {
-			height: 470px;
-			width: 382px;
+			width: 100vw;
+			max-width: 382px;
 			border-radius: 5px;
-			margin: 20px auto;
+			margin-top: 20px;
+			touch-action: none;
 		}
 
 		#shim {
@@ -54,8 +64,6 @@ $(document).ready(function() {
         console.error("Failed to load image: weedlogo.png");
     };
 });
-
-
 
 var NONE        = 4,
     UP          = 3,
@@ -103,8 +111,19 @@ document.addEventListener("touchend", function(e) {
 }, false);
 
 function movePacman(direction) {
-    nextDirection = direction; // this works with your existing update logic
+    // Swipe strings for touch screen movement.
+    const dirMap = {
+        "RIGHT": RIGHT,
+        "LEFT": LEFT,
+        "UP": UP,
+        "DOWN": DOWN
+    };
+    nextDirection = direction;
+    if (window.PACMAN && PACMAN.setDirectionFromSwipe && dirMap[direction]) {
+        PACMAN.setDirectionFromSwipe(dirMap[direction]);
+    }
 }
+
 Pacman.Ghost = function (game, map, colour) {
 
     var position  = null,
@@ -325,7 +344,7 @@ Pacman.Ghost = function (game, map, colour) {
         if (onGrid &&
             map.isWallSpace({
                 "y" : pointToCoord(nextSquare(npos.y, direction)),
-                "x" : pointToCoord(nextSquare(npos.x, direction))
+                "x" :pointToCoord(nextSquare(npos.x, direction))
             })) {
 
             due = getRandomDirection();
@@ -423,6 +442,11 @@ Pacman.User = function (game, map) {
         }
         return true;
 	};
+
+    // Set desired direction directly.
+    function setDueDirection(dir) {
+        due = dir;
+    };
 
     function getNewCoord(dir, current) {
         return {
@@ -607,7 +631,8 @@ Pacman.User = function (game, map) {
         "move"          : move,
         "newLevel"      : newLevel,
         "reset"         : reset,
-        "resetPosition" : resetPosition
+        "resetPosition" : resetPosition,
+        "setDueDirection": setDueDirection
     };
 };
 
@@ -684,39 +709,38 @@ Pacman.Map = function (size) {
 
     function drawPills(ctx) {
 
-    if (++pillSize > 30) {
-        pillSize = 0;
-    }
-
-    for (let i = 0; i < height; i++) {
-        for (let j = 0; j < width; j++) {
-
-            if (map[i][j] === Pacman.PILL) {
-
-                ctx.fillStyle = "#000";
-                ctx.fillRect(
-                    j * blockSize,
-                    i * blockSize,
-                    blockSize,
-                    blockSize
-                );
-
-                // Pulsing scale for animation
-                let scale = Math.abs(5 - (pillSize / 3)) / 5; // 0 → 1 → 0 loop
-                let size = blockSize * 0.8 * (0.7 + scale); // adjust to taste
-
-                // Center the nugget
-                let x = (j * blockSize) + blockSize / 2 - size / 2;
-                let y = (i * blockSize) + blockSize / 2 - size / 2;
-
-                // Draw weed nugget
-                ctx.drawImage(nugImg, x, y, size, size);
-            }
-
+        if (++pillSize > 30) {
+            pillSize = 0;
         }
-    }
-};
 
+        for (let i = 0; i < height; i++) {
+            for (let j = 0; j < width; j++) {
+
+                if (map[i][j] === Pacman.PILL) {
+
+                    ctx.fillStyle = "#000";
+                    ctx.fillRect(
+                        j * blockSize,
+                        i * blockSize,
+                        blockSize,
+                        blockSize
+                    );
+
+                    // Pulsing scale for animation
+                    let scale = Math.abs(5 - (pillSize / 3)) / 5; // 0 → 1 → 0 loop
+                    let size = blockSize * 0.8 * (0.7 + scale); // adjust to taste
+
+                    // Center the nugget
+                    let x = (j * blockSize) + blockSize / 2 - size / 2;
+                    let y = (i * blockSize) + blockSize / 2 - size / 2;
+
+                    // Draw weed nugget
+                    ctx.drawImage(nugImg, x, y, size, size);
+                }
+
+            }
+        }
+    };
 
     function draw(ctx) {
 
@@ -787,13 +811,15 @@ Pacman.Audio = function(game) {
 
         var f = files[name] = document.createElement("audio");
 
-        progressEvents[name] = function(event) { progress(event, name, cb); };
-
-        f.addEventListener("canplaythrough", progressEvents[name], true);
+        // On mobile, waiting for canplaythrough is unreliable; just set up the element and immediately move on so the game can start.
         f.setAttribute("preload", "true");
         f.setAttribute("autobuffer", "true");
         f.setAttribute("src", path);
         f.pause();
+
+        if (typeof cb === "function") {
+            cb();
+        }
     };
 
     function progress(event, name, callback) {
@@ -1118,7 +1144,7 @@ var PACMAN = (function () {
     function init(wrapper, root) {
 
         var i, len, ghost,
-            blockSize = wrapper.offsetWidth / 19,
+            blockSize = Math.floor(wrapper.offsetWidth / 19) || 20,
             canvas    = document.createElement("canvas");
 
         canvas.setAttribute("width", (blockSize * 19) + "px");
@@ -1127,6 +1153,10 @@ var PACMAN = (function () {
         wrapper.appendChild(canvas);
 
         ctx  = canvas.getContext('2d');
+
+		canvas.addEventListener('touchmove', function (e) {
+			e.preventDefault();
+		}, { passive: false });
 
         audio = new Pacman.Audio({"soundDisabled":soundDisabled});
         map   = new Pacman.Map(blockSize);
@@ -1174,11 +1204,29 @@ var PACMAN = (function () {
         document.addEventListener("keydown", keyDown, true);
         document.addEventListener("keypress", keyPress, true);
 
+        // On touch devices, start the game on first touch.
+        if ('ontouchstart' in window || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0)) {
+            document.addEventListener('touchstart', function handleFirstTouch() {
+                if (state === WAITING) {
+                    startNewGame();
+                }
+                document.removeEventListener('touchstart', handleFirstTouch);
+            }, { passive: true });
+        }
+
         timer = window.setInterval(mainLoop, 1000 / Pacman.FPS);
     };
 
+    // Hook for swipe controls to set direction.
+    function setDirectionFromSwipe(dir) {
+        if (user && typeof user.setDueDirection === "function") {
+            user.setDueDirection(dir);
+        }
+    }
+
     return {
-        "init" : init
+        "init" : init,
+        "setDirectionFromSwipe": setDirectionFromSwipe
     };
 
 }());
@@ -1367,8 +1415,6 @@ $(function(){
       "(firefox 3.6+, Chrome 4+, Opera 10+ and Safari 4+)</small>";
   }
 });
-
-
 	</script>
 </body>
 </html>
